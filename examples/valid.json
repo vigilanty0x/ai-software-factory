@@ -1,0 +1,16 @@
+{
+  "spec": "spec.md",
+  "agents": [
+    "builder",
+    "reviewer"
+  ],
+  "worktrees": [
+    "agent/build"
+  ],
+  "tests_passed": 20,
+  "tests_total": 20,
+  "evidence": [
+    "report.json"
+  ]
+}
+
