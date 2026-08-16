@@ -1,5 +1,6 @@
 from __future__ import annotations
 from hashlib import sha256
+import hmac
 import json
 from typing import Any
 
@@ -8,7 +9,13 @@ REQUIRED_FIELDS = ["mission", "owner", "tests_passed", "tests_total"]
 RULE = "mission ownership must be explicit and all tests must pass"
 
 def _canonical(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
 
 def _valid(record: dict[str, Any]) -> bool:
     kind = "factory"
@@ -30,16 +37,57 @@ def _valid(record: dict[str, Any]) -> bool:
     if kind == "corpus":
         return isinstance(record["documents"], int) and record["documents"] > 0 and record["indexed"] == record["documents"] and record["duplicates"] == 0
     if kind == "factory":
-        return isinstance(record["owner"], str) and bool(record["owner"].strip()) and isinstance(record["tests_total"], int) and record["tests_total"] > 0 and record["tests_passed"] == record["tests_total"]
+        return (
+            isinstance(record["mission"], str)
+            and bool(record["mission"].strip())
+            and isinstance(record["owner"], str)
+            and bool(record["owner"].strip())
+            and type(record["tests_total"]) is int
+            and record["tests_total"] > 0
+            and type(record["tests_passed"]) is int
+            and record["tests_passed"] == record["tests_total"]
+        )
     if kind == "mesh":
         return isinstance(record["agent_count"], int) and record["agent_count"] > 0 and record["healthy_agents"] == record["agent_count"] and isinstance(record["route_count"], int) and record["route_count"] > 0
     return False
 
 def evaluate(record: dict[str, Any]) -> dict[str, Any]:
-    missing = [field for field in REQUIRED_FIELDS if field not in record]
-    status = "blocked" if missing else ("passed" if _valid(record) else "failed")
-    reason = ("missing required fields: " + ", ".join(missing)) if missing else RULE
-    evidence = {"project": PROJECT, "status": status, "reason": reason, "record": record}
+    try:
+        frozen_record = json.loads(_canonical(record))
+    except (TypeError, ValueError):
+        frozen_record = {}
+        status = "blocked"
+        reason = "record must be a finite JSON object"
+    else:
+        if not isinstance(frozen_record, dict):
+            frozen_record = {}
+            status = "blocked"
+            reason = "record must be a JSON object"
+        else:
+            missing = [field for field in REQUIRED_FIELDS if field not in frozen_record]
+            status = "blocked" if missing else ("passed" if _valid(frozen_record) else "failed")
+            reason = ("missing required fields: " + ", ".join(missing)) if missing else RULE
+    evidence = {
+        "project": PROJECT,
+        "status": status,
+        "reason": reason,
+        "record": frozen_record,
+    }
     evidence["evidence_sha256"] = sha256(_canonical(evidence).encode()).hexdigest()
     return evidence
 
+
+def verify_evidence(evidence: dict[str, Any]) -> bool:
+    """Verify the legacy evidence envelope without trusting mutable aliases."""
+
+    expected = evidence.get("evidence_sha256")
+    if not isinstance(expected, str) or len(expected) != 64:
+        return False
+    if set(evidence) != {"project", "status", "reason", "record", "evidence_sha256"}:
+        return False
+    material = {key: value for key, value in evidence.items() if key != "evidence_sha256"}
+    try:
+        calculated = sha256(_canonical(material).encode()).hexdigest()
+    except (TypeError, ValueError):
+        return False
+    return hmac.compare_digest(calculated, expected)

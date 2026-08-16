@@ -9,9 +9,13 @@ FORBIDDEN = ("BEGIN " + "PRIVATE KEY", "gh" + "p_", "api" + "_key=", "pass" + "w
 def main() -> int:
     problems: list[str] = []
     for path in ROOT.rglob("*"):
-        if not path.is_file() or any(part in {"build", "dist", "__pycache__"} or part.endswith(".egg-info") for part in path.parts):
+        if not path.is_file() or any(
+            part in {".git", ".factory", ".factory-attempts", "build", "dist", "__pycache__"}
+            or part.endswith(".egg-info")
+            for part in path.parts
+        ):
             continue
-        if path.suffix not in {".py", ".md", ".toml", ".yml", ".yaml", ".json"}:
+        if path.suffix not in {".py", ".md", ".toml", ".yml", ".yaml", ".json", ".in"}:
             continue
         text = path.read_text(encoding="utf-8")
         if any(marker.casefold() in text.casefold() for marker in FORBIDDEN):
@@ -21,7 +25,21 @@ def main() -> int:
                 json.loads(text)
             except json.JSONDecodeError as exc:
                 problems.append(f"{path.relative_to(ROOT)}: {exc}")
-    for required in ("README.md", "LICENSE", "SECURITY.md", "pyproject.toml", ".github/workflows/ci.yml"):
+    for required in (
+        "README.md",
+        "LICENSE",
+        "SECURITY.md",
+        "CONTRIBUTING.md",
+        "AI_ASSISTANCE.md",
+        "CHANGELOG.md",
+        "MANIFEST.in",
+        "docs/architecture.md",
+        "docs/specification.md",
+        "docs/security-model.md",
+        "examples/factory.json",
+        "pyproject.toml",
+        ".github/workflows/ci.yml",
+    ):
         if not (ROOT / required).is_file():
             problems.append(f"missing {required}")
     if problems:
@@ -32,4 +50,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
