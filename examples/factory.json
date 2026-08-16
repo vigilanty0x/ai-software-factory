@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "name": "synthetic-release-pipeline",
+  "workspace": ".factory/workspace",
+  "budget": {
+    "max_tasks": 10,
+    "max_attempts": 12,
+    "max_wall_seconds": 180,
+    "max_output_bytes": 65536,
+    "default_task_timeout_seconds": 15,
+    "lease_seconds": 30,
+    "retry_base_seconds": 0,
+    "retry_cap_seconds": 0,
+    "default_max_attempts": 2
+  },
+  "tasks": [
+    {
+      "id": "build",
+      "owner": "synthetic-builder",
+      "description": "Create a tiny deterministic module.",
+      "command": [
+        "python",
+        "-c",
+        "from pathlib import Path; p=Path('src/greeting.py'); p.parent.mkdir(parents=True,exist_ok=True); p.write_text(\"def greet(name):\\n    return f'Hello, {name}!'\\n\",encoding='utf-8')"
+      ],
+      "owned_paths": [
+        "src/greeting.py"
+      ],
+      "artifacts": [
+        "src/greeting.py"
+      ],
+      "tests": [
+        {
+          "name": "syntax",
+          "command": [
+            "python",
+            "-c",
+            "from pathlib import Path; compile(Path('src/greeting.py').read_text(encoding='utf-8'),'src/greeting.py','exec')"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contract",
+      "owner": "synthetic-verifier",
+      "description": "Exercise public behavior and record a synthetic report.",
+      "command": [
+        "python",
+        "-c",
+        "from pathlib import Path; ns={}; exec(Path('src/greeting.py').read_text(encoding='utf-8'),ns); assert ns['greet']('Factory')=='Hello, Factory!'; p=Path('reports/contract.txt'); p.parent.mkdir(parents=True,exist_ok=True); p.write_text('PASS\\n',encoding='utf-8')"
+      ],
+      "depends_on": [
+        "build"
+      ],
+      "owned_paths": [
+        "reports/contract.txt"
+      ],
+      "artifacts": [
+        "reports/contract.txt"
+      ]
+    },
+    {
+      "id": "package",
+      "owner": "synthetic-releaser",
+      "description": "Create a deterministic release manifest from prior artifacts.",
+      "command": [
+        "python",
+        "-c",
+        "from hashlib import sha256; from pathlib import Path; source=Path('src/greeting.py').read_bytes(); report=Path('reports/contract.txt').read_text(encoding='utf-8').strip(); out=Path('dist/manifest.txt'); out.parent.mkdir(parents=True,exist_ok=True); out.write_text(f'source_sha256={sha256(source).hexdigest()}\\ncontract={report}\\n',encoding='utf-8')"
+      ],
+      "depends_on": [
+        "build",
+        "contract"
+      ],
+      "owned_paths": [
+        "dist/manifest.txt"
+      ],
+      "artifacts": [
+        "dist/manifest.txt"
+      ]
+    }
+  ]
+}

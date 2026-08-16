@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-software-factory"
-version = "0.1.0"
-description = "Gate AI software missions on ownership, tests, and evidence."
+version = "1.0.0"
+description = "A local, evidence-first software factory with durable DAG execution."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -15,9 +15,12 @@ dependencies = []
 [project.scripts]
 ai-software-factory = "ai_software_factory.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/vigilanty0x/ai-software-factory"
+Issues = "https://github.com/vigilanty0x/ai-software-factory/issues"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
