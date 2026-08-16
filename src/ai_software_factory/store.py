@@ -6,6 +6,7 @@ atomic across processes sharing the same database file.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -168,7 +169,10 @@ class FactoryStore:
         return connection
 
     def initialize(self) -> None:
-        with self._connect() as connection:
+        # sqlite3.Connection's context manager commits or rolls back, but does
+        # not close the handle.  Explicit closing matters on Windows, where an
+        # open handle prevents a temporary database from being removed.
+        with closing(self._connect()) as connection:
             version = int(connection.execute("PRAGMA user_version").fetchone()[0])
             if version not in {0, 1}:
                 raise StoreError(f"unsupported database schema version: {version}")
@@ -343,7 +347,7 @@ class FactoryStore:
             connection.close()
 
     def load_spec(self, run_id: str) -> FactorySpec:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT spec_json FROM runs WHERE run_id=?", (run_id,)
             ).fetchone()
@@ -908,7 +912,7 @@ class FactoryStore:
             connection.close()
 
     def next_retry_at(self, run_id: str) -> float | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute(
                 """
                 SELECT MIN(next_attempt_at) AS value FROM tasks
@@ -958,7 +962,7 @@ class FactoryStore:
         }
 
     def snapshot(self, run_id: str) -> dict[str, Any]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             return self._snapshot_with_connection(connection, run_id)
 
     def _replay_with_connection(
@@ -1022,7 +1026,7 @@ class FactoryStore:
         return events
 
     def replay(self, run_id: str) -> list[dict[str, Any]]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             return self._replay_with_connection(connection, run_id)
 
     def export(self, run_id: str) -> dict[str, Any]:

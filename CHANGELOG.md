@@ -43,6 +43,9 @@ and the project uses semantic versioning.
   factory timeout/output policy.
 - Pre-staged publication backups and compensated partial filesystem changes when
   a handled replacement or database transition fails.
+- Closed every short-lived SQLite read handle explicitly so Windows can remove
+  completed temporary databases, and made subprocess newline assertions
+  platform-aware without normalizing captured evidence.
 
 ## 0.1.0 - 2026-08-15
 

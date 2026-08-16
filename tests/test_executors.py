@@ -46,8 +46,8 @@ class ExecutorTests(unittest.TestCase):
             self.request("import sys; print('out'); print('err', file=sys.stderr)")
         )
         self.assertTrue(actual.succeeded)
-        self.assertEqual(actual.stdout, b"out\n")
-        self.assertEqual(actual.stderr, b"err\n")
+        self.assertEqual(actual.stdout, f"out{os.linesep}".encode())
+        self.assertEqual(actual.stderr, f"err{os.linesep}".encode())
 
     def test_nonzero_exit_is_failure(self):
         actual = self.executor.execute(self.request("raise SystemExit(7)"))

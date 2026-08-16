@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -216,14 +217,14 @@ class StoreTests(unittest.TestCase):
 
     def test_event_payload_tampering_is_detected(self):
         run_id = self.store.create_run(self.parsed(), "tamper")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute("UPDATE events SET payload_json='{}' WHERE run_id=?", (run_id,))
         with self.assertRaisesRegex(StoreError, "event chain"):
             self.store.replay(run_id)
 
     def test_event_deletion_is_detected_by_anchor(self):
         run_id = self.store.create_run(self.parsed(), "delete")
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute("DELETE FROM events WHERE run_id=?", (run_id,))
         with self.assertRaisesRegex(StoreError, "anchor"):
             self.store.replay(run_id)
@@ -241,7 +242,7 @@ class StoreTests(unittest.TestCase):
         run_id = self.started()
         claim = self.store.claim_ready_task(run_id, "worker", 10)
         self.complete(claim, succeeded=True)  # type: ignore[arg-type]
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute(
                 "UPDATE receipts SET receipt_json='{}' WHERE run_id=?", (run_id,)
             )
@@ -312,7 +313,7 @@ class StoreTests(unittest.TestCase):
 
     def test_unversioned_nonempty_database_is_rejected(self):
         legacy = Path(self.temporary.name) / "legacy.sqlite3"
-        with sqlite3.connect(legacy) as connection:
+        with closing(sqlite3.connect(legacy)) as connection, connection:
             connection.execute("CREATE TABLE old(value TEXT)")
         with self.assertRaisesRegex(StoreError, "unversioned"):
             FactoryStore(legacy)
