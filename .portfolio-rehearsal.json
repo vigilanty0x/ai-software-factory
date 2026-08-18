@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "target": "ai-software-factory",
+  "base": "ai-software-factory",
+  "baseHeadSha": "a054f0f4872471472092059bb02f9eac656f85d1",
+  "sources": [
+    {
+      "repository": "ai-software-factory-starter-kit",
+      "prefix": "packages/ai-software-factory-starter-kit",
+      "headSha": "fc0f59e7f519612a9d2d31f5701c76e3b532a8f5",
+      "treeSha": "6c2bb08cd8d0541497cb5faf25e84a8d2a1ef7ed",
+      "ancestor": true,
+      "treeMatch": true
+    }
+  ],
+  "state": "REHEARSAL_ONLY",
+  "archiveGate": "BLOCKED",
+  "reason": "Tests, compatibility, release, redirect, consumer, rollback, and human gates are not all verified."
+}

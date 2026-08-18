@@ -1,16 +1,23 @@
 [build-system]
-requires = ["setuptools==80.9.0"]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-software-factory"
 version = "1.0.0"
-description = "A local, evidence-first software factory with durable DAG execution."
+description = "AI Software Factory: local evidence-first software execution with durable DAGs, replay, and bounded publication."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+]
 
 [project.scripts]
 ai-software-factory = "ai_software_factory.cli:main"

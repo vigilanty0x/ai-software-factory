@@ -1,0 +1,11 @@
+{
+  "spec": "spec.md",
+  "ownership": [{"agent": "builder", "worktree": "agent/build"}, {"agent": "tester", "worktree": "agent/test"}],
+  "tests": {"passed": 20, "total": 20, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+  "evidence": [
+    {"kind": "artifact", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "issuer": "build-job", "issued_at": "2026-08-15T09:00:00Z"},
+    {"kind": "test", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "issuer": "test-job", "issued_at": "2026-08-15T09:30:00Z"}
+  ],
+  "review": {"reviewer": "independent-reviewer", "subject_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "decision": "approved", "issued_at": "2026-08-15T10:00:00Z"},
+  "release": {"artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "review_sha256": "0ebf542c9b63c3561b4e5e0cf53d5e13bc6c8c324994a55fff9d3485db1816de", "issuer": "release-job", "issued_at": "2026-08-15T11:00:00Z"}
+}
