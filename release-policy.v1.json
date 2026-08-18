@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "repository": "vigilanty0x/ai-software-factory",
+  "product": "AI Software Factory",
+  "distribution": "ai-software-factory",
+  "version": "1.0.0",
+  "proposed_tag": "v1.0.0",
+  "state": "PREPARED",
+  "publish_enabled": false,
+  "rollback_version": "0.1.0",
+  "requires": [
+    "multi_os_runtime_ci",
+    "wheel_and_sdist",
+    "installed_artifact_smoke",
+    "positive_and_counterproof",
+    "sha256_checksums",
+    "cyclonedx_sbom",
+    "verified_slsa_provenance",
+    "consumer_compatibility",
+    "explicit_publication_decision",
+    "post_publication_verification"
+  ]
+}
