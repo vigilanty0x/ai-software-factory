@@ -9,6 +9,12 @@ evidence.
 The project is local-only. It does not call a model API, fetch dependencies at
 runtime, or require a hosted control plane.
 
+**Release status:** the repository currently prepares version `1.0.0` as a
+`PREPARED` candidate. `release-policy.v1.json` keeps `publish_enabled=false`;
+normal CI cannot create a tag, GitHub Release, or package publication. Rollback
+is explicitly documented to `0.1.0`. See [Migration to 1.0](MIGRATION-1.0.md)
+and [the release contract](docs/release.md).
+
 ## What makes it a factory
 
 - Strict, versioned JSON specifications with unknown-field rejection.
@@ -160,10 +166,10 @@ available to the current account. Run untrusted specifications only inside a
 separate OS sandbox, container, VM, or disposable account.
 
 The factory minimizes inherited environment data, never invokes a shell, confines
-provider requests to the exact attempt workspace and declared output budget,
-rejects symlink publication, and detects writes outside declared ownership inside
-the attempt workspace. These controls reduce mistakes; they do not replace OS
-isolation. Read the [security model](docs/security-model.md).
+provider requests to the exact attempt workspace and factory timeout/output
+policy, rejects symlink publication, and detects writes outside declared
+ownership inside the attempt workspace. These controls reduce mistakes; they do
+not replace OS isolation. Read the [security model](docs/security-model.md).
 
 ## Legacy compatibility
 
@@ -177,11 +183,33 @@ It validates `mission`, `owner`, `tests_passed`, and `tests_total`, emits a
 tamper-evident envelope, and preserves the original `0`/`2` exit behavior.
 `evaluate()` and `verify_evidence()` remain public Python APIs.
 
+## Release evidence
+
+Flagship CI runs Ubuntu, Windows, and macOS across CPython 3.11, 3.12, and 3.13.
+Every job builds wheel plus source distribution with the pinned toolchain,
+installs and tests the real wheel, executes the full runtime suite and a portable
+positive/negative/blocked legacy counter-proof, smokes the CLI outside checkout,
+and tests the complete source distribution.
+
+Each job also produces `SHA256SUMS.txt`, CycloneDX 1.6
+`ai-software-factory.cdx.json`, and `RELEASE_EVIDENCE.json`. The receipt remains
+`PREPARED` and records release booleans as false. After the 9-job matrix, a
+guarded owner/same-repository job signs the canonical Ubuntu/Python 3.11 wheel
+with GitHub/Sigstore SLSA provenance and then verifies it with
+`gh attestation verify` constrained by repository, signer workflow, source ref,
+source digest, and GitHub-hosted runner policy.
+
+Signed provenance is evidence, not publication authorization. A separate
+reviewed change is required to enable publication and must retain rollback plus
+post-publication read-back verification.
+
 ## Development
 
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -v
 PYTHONPATH=src python scripts/check.py
+python scripts/check_release_policy.py
+python scripts/verify_counterproof.py
 ```
 
 The runtime has no third-party dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md),
