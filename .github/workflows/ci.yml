@@ -4,58 +4,162 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  SOURCE_DATE_EPOCH: "315532800"
 
 jobs:
   test:
-    name: Python ${{ matrix.python }} / ${{ matrix.os }}
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 12
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            python: "3.11"
-          - os: ubuntu-latest
-            python: "3.12"
-          - os: ubuntu-latest
-            python: "3.13"
-          - os: windows-latest
-            python: "3.12"
-          - os: macos-latest
-            python: "3.12"
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - name: Check out source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: ${{ matrix.python }}
-          cache: pip
-      - name: Install pinned build backend
-        run: python -m pip install --disable-pip-version-check "setuptools==80.9.0"
+          python-version: ${{ matrix.python-version }}
+      - name: Install pinned build toolchain
+        run: python -m pip install --disable-pip-version-check --upgrade -r requirements-build.txt
+      - name: Verify exact build toolchain
+        run: python -c "from importlib.metadata import version; expected={'pip':'25.2','setuptools':'80.9.0','wheel':'0.45.1'}; actual={name:version(name) for name in expected}; assert actual==expected, actual; print(actual)"
       - name: Build wheel and source distribution
         run: |
           python -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist
           python -c "from setuptools.build_meta import build_sdist; print(build_sdist('dist'))"
+      - name: Verify exact candidate artifact cardinality
+        run: python -c "from pathlib import Path; wheels=list(Path('dist').glob('*.whl')); sdists=list(Path('dist').glob('*.tar.gz')); assert len(wheels)==1, wheels; assert len(sdists)==1, sdists; print(wheels[0].name, sdists[0].name)"
       - name: Install built wheel
-        run: python -c "import glob, subprocess, sys; subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--no-deps', '--force-reinstall', glob.glob('dist/*.whl')[0]])"
-      - name: Compile source and tests
-        run: python -m compileall -q src tests
-      - name: Run test suite
+        run: python -c "import glob,subprocess,sys; wheels=glob.glob('dist/*.whl'); assert len(wheels)==1, wheels; subprocess.check_call([sys.executable,'-m','pip','install','--disable-pip-version-check','--no-deps','--force-reinstall',wheels[0]])"
+      - name: Compile source, tests, and release scripts
+        run: python -m compileall -q src tests scripts
+      - name: Run complete test suite
         run: python -m unittest discover -s tests -v
-      - name: Run repository checks
+      - name: Run public-boundary checks
         run: python scripts/check.py
-      - name: Smoke-test installed CLI outside checkout
+      - name: Verify publication remains disabled
+        run: python scripts/check_release_policy.py
+      - name: Verify positive, negative, and blocked legacy gate
+        run: python scripts/verify_counterproof.py
+      - name: Verify installed metadata
+        run: python -c "import importlib.metadata as m; assert m.version('ai-software-factory') == '1.0.0'"
+      - name: Smoke installed CLI outside checkout
         working-directory: ${{ runner.temp }}
         run: ai-software-factory --help
+      - name: Verify complete source distribution
+        run: python -c "import glob,subprocess,sys; archives=glob.glob('dist/*.tar.gz'); assert len(archives)==1, archives; subprocess.check_call([sys.executable,'scripts/verify_sdist.py',archives[0]])"
+      - name: Generate prepared release evidence
+        env:
+          FACTORY_TESTS_VERIFIED: "1"
+          FACTORY_COUNTERPROOF_VERIFIED: "1"
+        run: python scripts/build_release_evidence.py --dist dist --output release-evidence
+      - name: Verify prepared state is not publication
+        run: python -c "import json; v=json.load(open('release-evidence/RELEASE_EVIDENCE.json')); assert v['state']=='PREPARED'; assert v['tests_verified'] is True and v['counterproof_verified'] is True; assert all(v[k] is False for k in ('signed','attested','tagged','published','released')); print(v['version'],v['state'])"
+      - name: Upload candidate evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: factory-candidate-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            release-evidence/SHA256SUMS.txt
+            release-evidence/ai-software-factory.cdx.json
+            release-evidence/RELEASE_EVIDENCE.json
+          if-no-files-found: error
+          retention-days: 14
+
+  attest-candidate:
+    needs: [test]
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner) || (github.event_name == 'pull_request' && github.actor == github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download canonical Ubuntu/Python 3.11 candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: factory-candidate-ubuntu-latest-py3.11
+          path: /tmp/factory-download
+          digest-mismatch: error
+      - name: Normalize and verify candidate bundle
+        run: |
+          mkdir -p /tmp/factory-candidate
+          wheel="$(find /tmp/factory-download -type f -name '*.whl' -print)"
+          sdist="$(find /tmp/factory-download -type f -name '*.tar.gz' -print)"
+          sums="$(find /tmp/factory-download -type f -name 'SHA256SUMS.txt' -print)"
+          sbom="$(find /tmp/factory-download -type f -name 'ai-software-factory.cdx.json' -print)"
+          receipt="$(find /tmp/factory-download -type f -name 'RELEASE_EVIDENCE.json' -print)"
+          test "$(printf '%s\n' "$wheel" | grep -c .)" -eq 1
+          test "$(printf '%s\n' "$sdist" | grep -c .)" -eq 1
+          test "$(printf '%s\n' "$sums" | grep -c .)" -eq 1
+          test "$(printf '%s\n' "$sbom" | grep -c .)" -eq 1
+          test "$(printf '%s\n' "$receipt" | grep -c .)" -eq 1
+          cp "$wheel" /tmp/factory-candidate/
+          cp "$sdist" /tmp/factory-candidate/
+          cp "$sums" /tmp/factory-candidate/SHA256SUMS.txt
+          cp "$sbom" /tmp/factory-candidate/ai-software-factory.cdx.json
+          cp "$receipt" /tmp/factory-candidate/RELEASE_EVIDENCE.json
+          python -c "import json; v=json.load(open('/tmp/factory-candidate/RELEASE_EVIDENCE.json')); assert v['state']=='PREPARED' and v['published'] is False and v['released'] is False"
+      - name: Generate signed SLSA provenance
+        id: attest
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: /tmp/factory-candidate/*.whl
+      - name: Verify signed provenance policy
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          test -s "$BUNDLE_PATH"
+          wheel="$(find /tmp/factory-candidate -maxdepth 1 -name '*.whl' -print -quit)"
+          gh attestation verify "$wheel" \
+            --repo "$GITHUB_REPOSITORY" \
+            --bundle "$BUNDLE_PATH" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml" \
+            --source-ref "$GITHUB_REF" \
+            --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners >/dev/null
+      - name: Write attestation receipt
+        env:
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          value = {
+              "schema_version": "1.0", "product": "AI Software Factory",
+              "repository": os.environ["GITHUB_REPOSITORY"], "source_ref": os.environ["GITHUB_REF"],
+              "source_digest": os.environ["GITHUB_SHA"], "runner_environment": os.environ.get("RUNNER_ENVIRONMENT"),
+              "attestation_id": os.environ.get("ATTESTATION_ID"), "attestation_url": os.environ.get("ATTESTATION_URL"),
+              "bundle_path": os.environ.get("BUNDLE_PATH"), "verified_with_gh_cli": True,
+              "provenance": "sigstore-slsa-github-actions", "publication_authorized": False,
+          }
+          Path('/tmp/factory-candidate/ATTESTATION-RECEIPT.json').write_text(json.dumps(value, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Upload signed candidate evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: factory-provenance-${{ github.run_id }}
+          path: |
+            ${{ steps.attest.outputs.bundle-path }}
+            /tmp/factory-candidate/*.whl
+            /tmp/factory-candidate/SHA256SUMS.txt
+            /tmp/factory-candidate/ai-software-factory.cdx.json
+            /tmp/factory-candidate/RELEASE_EVIDENCE.json
+            /tmp/factory-candidate/ATTESTATION-RECEIPT.json
+          if-no-files-found: error
+          retention-days: 30
